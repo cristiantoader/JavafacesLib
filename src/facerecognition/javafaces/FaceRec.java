@@ -27,6 +27,36 @@ public class FaceRec {
 	private double[][] weights;
 	Handler fh;
 
+	public MatchResult findMatchResult(Bitmap image, int selectedeigenfaces,
+			double thresholdVal) {
+
+		boolean match = false;
+		String message = null;
+		String matchingFileName = "";
+		double minimumDistance = 0.0;
+		try {
+			checkImageSizeCompatibility(image);
+			Matrix2D inputFace = getNormalisedInputFace(image);
+
+			inputFace.subtract(new Matrix2D(bundle.getAvgFace(), 1));
+			Matrix2D inputWts = getInputWeights(selectedeigenfaces, inputFace);
+			double[] distances = getDistances(inputWts);
+			ImageDistanceInfo distanceInfo = getMinimumDistanceInfo(distances);
+			minimumDistance = Math.sqrt(distanceInfo.getValue());
+			matchingFileName = getMatchingFileName(distanceInfo);
+
+			if (minimumDistance > thresholdVal) {
+				message = "no match found, try higher threshold";
+			} else {
+				match = true;
+				message = "matching image found";
+			}
+		} catch (Exception e) {
+			return new MatchResult(false, "", Double.NaN, e.getMessage());
+		}
+		return new MatchResult(match, matchingFileName, minimumDistance, message);
+	}
+
 	public MatchResult findMatchResult(String imageFileName,
 			int selectedeigenfaces, double thresholdVal) {
 		boolean match = false;
@@ -54,6 +84,21 @@ public class FaceRec {
 			return new MatchResult(false, "", Double.NaN, e.getMessage());
 		}
 		return new MatchResult(match, matchingFileName, minimumDistance, message);
+	}
+
+	private void checkImageSizeCompatibility(Bitmap image) throws IOException,
+			FaceRecError {
+		int height = image.getHeight();
+		int width = image.getWidth();
+
+		int facebundleWidth = this.bundle.getImageWidth();
+		int facebundleHeight = this.bundle.getImageHeight();
+
+		if ((height != facebundleHeight) || (width != facebundleWidth)) {
+			throw new FaceRecError(
+					"selected image dimensions does not match dimensions of other images");
+		}
+
 	}
 
 	private void checkImageSizeCompatibility(String fileName) throws IOException,
@@ -99,6 +144,16 @@ public class FaceRec {
 		// Log.i("FaceRec", inputFace.toString());
 		return inputFace;
 	}
+	
+	private Matrix2D getNormalisedInputFace(Bitmap image)
+			throws FaceRecError {
+		double[] inputFaceData = getImageData(image);
+		
+		Matrix2D inputFace = new Matrix2D(inputFaceData, 1);
+		inputFace.normalise();
+		
+		return inputFace;
+	}
 
 	private ImageDistanceInfo getMinimumDistanceInfo(double[] distances) {
 		double minimumDistance = Double.MAX_VALUE;
@@ -135,6 +190,24 @@ public class FaceRec {
 
 		// loading image
 		Bitmap bmp = BitmapFactory.decodeFile(imageFileName);
+
+		// getting pixels
+		pixels = new int[bmp.getWidth() * bmp.getHeight()];
+		bmp.getPixels(pixels, 0, bmp.getWidth(), 0, 0, bmp.getWidth(),
+				bmp.getHeight());
+
+		// converting to double
+		result = new double[pixels.length];
+		for (int i = 0; i < result.length; i++) {
+			result[i] = (double) (pixels[i]);
+		}
+
+		return result;
+	}
+	
+	private double[] getImageData(Bitmap bmp) throws FaceRecError {
+		double[] result = null;
+		int[] pixels = null;
 
 		// getting pixels
 		pixels = new int[bmp.getWidth() * bmp.getHeight()];
