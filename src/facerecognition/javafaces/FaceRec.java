@@ -478,7 +478,7 @@ public class FaceRec {
 	private void validateSelectedEigenFacesNumber(int selectedNumOfEigenFaces,
 			List<String> newFileNames) throws FaceRecError {
 		int numImgs = newFileNames.size();
-		if (selectedNumOfEigenFaces <= 0 || selectedNumOfEigenFaces >= numImgs) {
+		if (selectedNumOfEigenFaces <= 0 || selectedNumOfEigenFaces > numImgs) {
 			Log.e("FaceRec", "incorrect number of selectedeigenfaces"
 					+ selectedNumOfEigenFaces + "used" + "allowed btw 0-" + numImgs);
 			throw new FaceRecError(
