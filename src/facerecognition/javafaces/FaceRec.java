@@ -10,9 +10,11 @@ import java.util.*;
 import java.util.logging.Handler;
 
 import android.annotation.SuppressLint;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
@@ -23,9 +25,16 @@ import facerecognition.utils.ValueIndexPair;
 
 @SuppressLint("DefaultLocale")
 public class FaceRec {
+	private Context androidContext = null;
+	private final static String LOG_TAG = "FaceRec";
+	
 	private FaceBundle bundle;
 	private double[][] weights;
 	Handler fh;
+
+	public FaceRec(Context ctx) {
+		this.androidContext = ctx;
+	}
 
 	public MatchResult findMatchResult(Bitmap image, int selectedeigenfaces,
 			double thresholdVal) {
@@ -35,25 +44,48 @@ public class FaceRec {
 		String matchingFileName = "";
 		double minimumDistance = 0.0;
 		try {
+			Log.d(LOG_TAG, "findMatchResult+");
+			
 			checkImageSizeCompatibility(image);
+			
 			Matrix2D inputFace = getNormalisedInputFace(image);
-
+			Log.d(LOG_TAG, "if:" + inputFace.get(0, 0) + " " + inputFace.get(0, 1));
+			
 			inputFace.subtract(new Matrix2D(bundle.getAvgFace(), 1));
+			Log.d(LOG_TAG, "if:" + inputFace.get(0, 0) + " " + inputFace.get(0, 1));
+
 			Matrix2D inputWts = getInputWeights(selectedeigenfaces, inputFace);
+			Log.d(LOG_TAG, "iw rows:" + inputWts.rows());
+			Log.d(LOG_TAG, "iw cols:" + inputWts.columns());
+			Log.d(LOG_TAG, "iw:" + inputWts.get(0, 0));
+
 			double[] distances = getDistances(inputWts);
+			Log.d(LOG_TAG, "distances:");
+			for (int i = 0; i < distances.length; i++) {
+				Log.d(LOG_TAG, ""+distances[i]);
+			}
+			
 			ImageDistanceInfo distanceInfo = getMinimumDistanceInfo(distances);
 			minimumDistance = Math.sqrt(distanceInfo.getValue());
 			matchingFileName = getMatchingFileName(distanceInfo);
 
 			if (minimumDistance > thresholdVal) {
 				message = "no match found, try higher threshold";
+				Log.d("FaceRec", message);
 			} else {
 				match = true;
 				message = "matching image found";
+				Log.d("FaceRec", message);
+				Log.d("FaceRec", minimumDistance + " vs " + thresholdVal);
+
 			}
 		} catch (Exception e) {
+			Log.e("FaceRec", "Exception thrown..");
+			e.printStackTrace();
 			return new MatchResult(false, "", Double.NaN, e.getMessage());
 		}
+		
+		Log.d(LOG_TAG, "findMatchResult- OK");
 		return new MatchResult(match, matchingFileName, minimumDistance, message);
 	}
 
@@ -144,14 +176,13 @@ public class FaceRec {
 		// Log.i("FaceRec", inputFace.toString());
 		return inputFace;
 	}
-	
-	private Matrix2D getNormalisedInputFace(Bitmap image)
-			throws FaceRecError {
+
+	private Matrix2D getNormalisedInputFace(Bitmap image) throws FaceRecError {
 		double[] inputFaceData = getImageData(image);
-		
+
 		Matrix2D inputFace = new Matrix2D(inputFaceData, 1);
 		inputFace.normalise();
-		
+
 		return inputFace;
 	}
 
@@ -167,8 +198,11 @@ public class FaceRec {
 		return new ImageDistanceInfo(distances[index], index);
 	}
 
+	// TODO: debug why temp[i][j] has a NaN value
 	private double[] getDistances(Matrix2D inputWt) {
 		Matrix2D tempWt = new Matrix2D(this.weights);
+		Log.d("FaceRec", "weights: " + tempWt.toString());
+		
 		double[] inputWtData = inputWt.flatten();
 		tempWt.subtractFromEachRow(inputWtData);
 		tempWt.multiplyElementWise(tempWt);
@@ -178,12 +212,16 @@ public class FaceRec {
 			double sum = 0.0;
 			for (int j = 0; j < temp[0].length; j++) {
 				sum += temp[i][j];
+				Log.d("FaceRec", "temp[i][j]:" + temp[i][j]);
 			}
+			
+			Log.d("FaceRec", "sum:" + sum);
 			distances[i] = sum;
 		}
 		return distances;
 	}
 
+	// TODO: refactor such for bw pics only
 	private double[] getImageData(String imageFileName) throws FaceRecError {
 		double[] result = null;
 		int[] pixels = null;
@@ -199,12 +237,12 @@ public class FaceRec {
 		// converting to double
 		result = new double[pixels.length];
 		for (int i = 0; i < result.length; i++) {
-			result[i] = (double) (pixels[i]);
+			result[i] = (double) (Color.blue(pixels[i]));
 		}
 
 		return result;
 	}
-	
+
 	private double[] getImageData(Bitmap bmp) throws FaceRecError {
 		double[] result = null;
 		int[] pixels = null;
@@ -217,7 +255,7 @@ public class FaceRec {
 		// converting to double
 		result = new double[pixels.length];
 		for (int i = 0; i < result.length; i++) {
-			result[i] = (double) (pixels[i]);
+			result[i] = (double) (Color.blue(pixels[i]));
 		}
 
 		return result;
@@ -247,30 +285,33 @@ public class FaceRec {
 		checkImageDimensions(filenames, bufimgs);
 
 		Matrix2D imagesData = getNormalisedImagesData(bufimgs);
+
 		double[] averageFace = imagesData.getAverageOfEachColumn();
 		imagesData.adjustToZeroMean();
-		// Log.i("FaceRec", "imagesData adjusted ToZeroMean");
-		// Log.i("FaceRec", imagesData.toString());
+		// Log.d("FaceRec", "imagesData adjusted ToZeroMean");
+		// Log.d("FaceRec", imagesData.toString());
+		// Log.d("FaceRec", "done imageData");
+
 		EigenvalueDecomposition egdecomp = getEigenvalueDecomposition(imagesData);
 		double[] eigenvalues = egdecomp.getEigenValues();
 		double[][] eigvectors = egdecomp.getEigenVectors();
 
-		// Log.i("FaceRec", "eigenvalues");
-		// Log.i("FaceRec", new Matrix2D(eigenvalues,1).toString());
-
-		// Log.i("FaceRec", "eigvectors");
-		// Log.i("FaceRec", new Matrix2D(eigvectors).toString());
+		// Log.d("FaceRec", "eigenvalues");
+		// Log.d("FaceRec", new Matrix2D(eigenvalues, 1).toString());
+		//
+		// Log.d("FaceRec", "eigvectors");
+		// Log.d("FaceRec", new Matrix2D(eigvectors).toString());
 
 		TreeSet<ValueIndexPair> pairList = getSortedPairs(eigenvalues, eigvectors);
 		eigenvalues = getSortedVector(pairList);
 		eigvectors = getSortedMatrix(eigvectors, pairList);
 
-		// Log.i("FaceRec", "AFTER SORTING");
-		// Log.i("FaceRec", "eigenvalues");
-		// Log.i("FaceRec", new Matrix2D(eigenvalues,1).toString());
-
-		// Log.i("FaceRec", "eigvectors");
-		// Log.i("FaceRec", new Matrix2D(eigvectors).toString());
+		// Log.d("FaceRec", "AFTER SORTING");
+		// Log.d("FaceRec", "eigenvalues");
+		// Log.d("FaceRec", new Matrix2D(eigenvalues, 1).toString());
+		//
+		// Log.d("FaceRec", "eigvectors");
+		// Log.d("FaceRec", new Matrix2D(eigvectors).toString());
 
 		Matrix2D eigenFaces = getNormalisedEigenFaces(imagesData, new Matrix2D(
 				eigvectors));
@@ -338,7 +379,7 @@ public class FaceRec {
 			throws IOException {
 		Log.i("FaceRec", "creating eigenfaces");
 		double[][] eigenfacesArray = eigenfaces.toArray();
-		String fldrname = ".." + File.separator + "eigenfaces";
+		String fldrname = this.getAbsoluteFolderPath("eigenfaces");
 		makeNewFolder(fldrname);
 		String prefix = "eigen";
 		String ext = ".png";
@@ -379,9 +420,10 @@ public class FaceRec {
 					imageHeight);
 		}
 
-		for (int index = 0; index < data.length; index++) {
-			for (int index2 = 0; index < data[index].length; index2++)
-				dataDouble[index][index2] = (double) data[index][index2];
+		for (int i = 0; i < data.length; i++) {
+			for (int j = 0; j < data[i].length; j++) {
+				dataDouble[i][j] = (double) (Color.blue(data[i][j]));
+			}
 		}
 
 		Matrix2D imagesData = new Matrix2D(dataDouble);
@@ -437,7 +479,7 @@ public class FaceRec {
 		int width = img.getWidth();
 		int height = img.getHeight();
 
-		Bitmap gray = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		Bitmap gray = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
 
 		ColorMatrix cm = new ColorMatrix();
 		cm.setSaturation(0);
@@ -456,22 +498,37 @@ public class FaceRec {
 	private void writeCache(String dir, FaceBundle cachedata) throws IOException {
 		FileOutputStream fout = null;
 		ObjectOutputStream fos = null;
-		fout = new FileOutputStream(dir + File.separator + "mycache.cache");
+		
+		File file = new File(dir, "mycache.cache");
+		if (file.exists())
+			Log.d("FaceRec", "cache file exists, overwriting");
+		
+		fout = new FileOutputStream(file);
 		fos = new ObjectOutputStream(fout);
-		fos.writeObject(cachedata);
-		Log.i("FaceRec", "wrote cache");
-		// fos.close();
+		
+		try {
+			fos.writeObject(cachedata);
+			Log.i("FaceRec", "wrote cache");
+			
+		} catch (Exception e) {
+			e.printStackTrace();
+			file.delete();
+		}
+		
 		fout.close();
 	}
 
 	private FaceBundle getOldFacesBundle(String dir) throws IOException,
 			ClassNotFoundException {
-		FileInputStream fin = new FileInputStream(dir + File.separator
-				+ "mycache.cache");
+		File file = new File(dir, "mycache.cache");
+		if (!file.exists()) {
+			Log.e("FaceRec", "File " + file + " does not exist.");
+		}
+		
+		FileInputStream fin = new FileInputStream(file);
 		ObjectInputStream fo = new ObjectInputStream(fin);
 		FaceBundle oldBundle = (FaceBundle) fo.readObject();
 		fo.close();
-		// fin.close();
 		return oldBundle;
 	}
 
@@ -529,6 +586,7 @@ public class FaceRec {
 			Log.i("FaceRec", "cache file not found");
 			doCalculations(dir, newFileNames, selectedNumOfEigenFaces);
 		} catch (Exception e) {
+			e.printStackTrace();
 			throw new FaceRecError(e.getMessage());
 		}
 	}
@@ -575,19 +633,29 @@ public class FaceRec {
 		bmpGrayScale.compress(Bitmap.CompressFormat.PNG, 100, out);
 	}
 
-	private void makeNewFolder(String fldr) {
+	private String makeNewFolder(String fldr) {
 		File folder = new File(fldr);
+
 		if (folder.isDirectory()) {
 			printError("folder:" + fldr + " exists");
 			deleteContents(folder);
+
 		} else {
 			printError("no such folder as:" + fldr);
-			boolean madeFolder = folder.mkdir();
+			boolean madeFolder = folder.mkdirs();
 			if (!madeFolder) {
 				printError("could not create folder :" + fldr);
+			}
 
+			// internal memory folder
+			folder = this.androidContext.getDir(fldr, Context.MODE_PRIVATE);
+			if (folder.exists()) {
+				Log.d("FaceRec", "Folder created successfully in internal memory: "
+						+ folder.getAbsolutePath());
 			}
 		}
+
+		return folder.getAbsolutePath();
 	}
 
 	private void deleteContents(File f) {
@@ -623,7 +691,7 @@ public class FaceRec {
 		 */
 		double[][] phi = getPhiData(egnfacesSubMatrix, eigenvalsSubMatrix);
 		double[][] xnew = addAverageFaceData(phi);
-		String reconFolderName = ".." + File.separator + "reconfaces";
+		String reconFolderName = getAbsoluteFolderPath("reconfaces");
 		String ext = ".png";
 		reconstructPhiImages(phi, reconFolderName, ext);
 		reconstructOriginalImages(xnew, reconFolderName, ext);
@@ -668,7 +736,7 @@ public class FaceRec {
 	private void reconstructPhiImages(double[][] phi, String reconFolderName,
 			String ext) throws IOException {
 		int imgwidth = bundle.getImageWidth();
-		makeNewFolder(reconFolderName);
+		reconFolderName = makeNewFolder(reconFolderName);
 		String prefix = "phi";
 		for (int i = 0; i < phi.length; i++) {
 			double[] phidata = phi[i];
@@ -724,6 +792,8 @@ public class FaceRec {
 			result = findMatchResult(faceImageName, numFaces, thresholdVal);
 
 		} catch (Exception e) {
+			Log.e("FaceRec", "Exception thrown..");
+			e.printStackTrace();
 			result = new MatchResult(false, null, Double.NaN, e.getMessage());
 		}
 		return result;
@@ -744,5 +814,9 @@ public class FaceRec {
 
 	public static void debug(String msg) {
 		Log.d("FaceRec", msg);
+	}
+	
+	private String getAbsoluteFolderPath(String folder) {
+		return this.androidContext.getDir(folder, Context.MODE_PRIVATE).getAbsolutePath();
 	}
 }
