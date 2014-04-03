@@ -96,12 +96,27 @@ public class FaceRec {
 		String matchingFileName = "";
 		double minimumDistance = 0.0;
 		try {
-			checkImageSizeCompatibility(imageFileName);
-			Matrix2D inputFace = getNormalisedInputFace(imageFileName);
+			Log.d(LOG_TAG, "findMatchResult+ (String)");
 
+			checkImageSizeCompatibility(imageFileName);
+			
+			Matrix2D inputFace = getNormalisedInputFace(imageFileName);
+			Log.d(LOG_TAG, "if:" + inputFace.get(0, 0) + " " + inputFace.get(0, 1));
+			
 			inputFace.subtract(new Matrix2D(bundle.getAvgFace(), 1));
+			Log.d(LOG_TAG, "if:" + inputFace.get(0, 0) + " " + inputFace.get(0, 1));
+
 			Matrix2D inputWts = getInputWeights(selectedeigenfaces, inputFace);
+			Log.d(LOG_TAG, "iw rows:" + inputWts.rows());
+			Log.d(LOG_TAG, "iw cols:" + inputWts.columns());
+			Log.d(LOG_TAG, "iw:" + inputWts.get(0, 0));
+
 			double[] distances = getDistances(inputWts);
+			Log.d(LOG_TAG, "distances:");
+			for (int i = 0; i < distances.length; i++) {
+				Log.d(LOG_TAG, ""+distances[i]);
+			}
+			
 			ImageDistanceInfo distanceInfo = getMinimumDistanceInfo(distances);
 			minimumDistance = Math.sqrt(distanceInfo.getValue());
 			matchingFileName = getMatchingFileName(distanceInfo);
@@ -113,8 +128,11 @@ public class FaceRec {
 				message = "matching image found";
 			}
 		} catch (Exception e) {
+			Log.d(LOG_TAG, "findMatchResult-e");
 			return new MatchResult(false, "", Double.NaN, e.getMessage());
 		}
+		
+		Log.d(LOG_TAG, "findMatchResult-");
 		return new MatchResult(match, matchingFileName, minimumDistance, message);
 	}
 
@@ -271,6 +289,9 @@ public class FaceRec {
 	}
 
 	private double[][] calculateWeights(FaceBundle b, int selectedNumOfEigenFaces) {
+		// TODO: experimenting
+		System.gc();
+		
 		Matrix2D eigenFaces = new Matrix2D(b.getEigenFaces());
 		Matrix2D eigenFacesPart = eigenFaces.getSubMatrix(selectedNumOfEigenFaces);
 		Matrix2D adjustedFaces = new Matrix2D(b.getAdjustedFaces());
@@ -289,18 +310,18 @@ public class FaceRec {
 		double[] averageFace = imagesData.getAverageOfEachColumn();
 		imagesData.adjustToZeroMean();
 		// Log.d("FaceRec", "imagesData adjusted ToZeroMean");
-		// Log.d("FaceRec", imagesData.toString());
+		 Log.d("FaceRec", imagesData.columns() + "x" + imagesData.rows());
 		// Log.d("FaceRec", "done imageData");
 
 		EigenvalueDecomposition egdecomp = getEigenvalueDecomposition(imagesData);
 		double[] eigenvalues = egdecomp.getEigenValues();
 		double[][] eigvectors = egdecomp.getEigenVectors();
 
-		// Log.d("FaceRec", "eigenvalues");
-		// Log.d("FaceRec", new Matrix2D(eigenvalues, 1).toString());
-		//
-		// Log.d("FaceRec", "eigvectors");
-		// Log.d("FaceRec", new Matrix2D(eigvectors).toString());
+		 Log.d("FaceRec", "eigenvalues");
+		 Log.d("FaceRec", new Matrix2D(eigenvalues, 1).toString());
+		
+		 Log.d("FaceRec", "eigvectors");
+		 Log.d("FaceRec", new Matrix2D(eigvectors).toString());
 
 		TreeSet<ValueIndexPair> pairList = getSortedPairs(eigenvalues, eigvectors);
 		eigenvalues = getSortedVector(pairList);
@@ -397,6 +418,7 @@ public class FaceRec {
 		double[][] eigenFacesData = eigenFaces.toArray();
 		for (int i = 0; i < eigenFacesData.length; i++) {
 			double norm = Matrix2D.norm(eigenFacesData[i]);
+			Log.d(LOG_TAG, "getNormalisedEigenFaces norm: " + norm);
 			for (int j = 0; j < eigenFacesData[i].length; j++) {
 				double v = eigenFacesData[i][j];
 				eigenFacesData[i][j] = v / norm;
@@ -536,8 +558,8 @@ public class FaceRec {
 			List<String> newFileNames) throws FaceRecError {
 		int numImgs = newFileNames.size();
 		if (selectedNumOfEigenFaces <= 0 || selectedNumOfEigenFaces > numImgs) {
-			Log.e("FaceRec", "incorrect number of selectedeigenfaces"
-					+ selectedNumOfEigenFaces + "used" + "allowed btw 0-" + numImgs);
+			Log.e("FaceRec", "incorrect number of selectedeigenfaces: "
+					+ selectedNumOfEigenFaces + " used " + " allowed btw 0-" + numImgs);
 			throw new FaceRecError(
 					"incorrect number of selectedeigenfaces used..\n use a number between 0 and upto "
 							+ (numImgs - 1));
@@ -779,17 +801,29 @@ public class FaceRec {
 		double thresholdVal = 0.0;
 
 		try {
+			Log.d(LOG_TAG, "processSelections+");
+			
+			Log.d(LOG_TAG, "processSelections: " + "validation");
 			validateSelectedImageFileName(faceImageName);
 			validateSelectedFolderName(directory);
 
+			
 			numFaces = getNumofFacesVal(numofFaces);
 			thresholdVal = getThresholdVal(threshold);
 			String extension = getFileExtension(faceImageName);
+			Log.d(LOG_TAG, "processSelections: " + "numFaces: " + numFaces);
+			Log.d(LOG_TAG, "processSelections: " + "thresholdVal: " + thresholdVal);
+			Log.d(LOG_TAG, "processSelections: " + "extension: " + extension);
 
+			
 			checkCache(directory, extension, numFaces);
 			reconstructFaces(numFaces);
 
 			result = findMatchResult(faceImageName, numFaces, thresholdVal);
+			Log.d(LOG_TAG, "processSelections: " + "result: " + result.getMatchSuccess());
+			Log.d(LOG_TAG, "processSelections: " + "result: " + result.getMatchDistance());
+			Log.d(LOG_TAG, "processSelections: " + "result: " + result.getMatchMessage());
+			Log.d(LOG_TAG, "processSelections: " + "result: " + result.getMatchFileName());
 
 		} catch (Exception e) {
 			Log.e("FaceRec", "Exception thrown..");
